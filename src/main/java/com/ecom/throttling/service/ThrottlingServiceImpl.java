@@ -24,15 +24,15 @@ public class ThrottlingServiceImpl implements ThrottlingService {
     private long timeLimit;
 
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-    private final Map<String, List<Long>> map = new HashMap<>();
-    private final Map<String, Long> map1 = new ConcurrentHashMap<>();
+    private final Map<String, List<Long>> throttleMap = new HashMap<>();
+    private final Map<String, Long> expiryMap = new ConcurrentHashMap<>();
 
     @Override
     public void throttle() {
         String ip = RequestUtil.getIp();
         long cur = System.currentTimeMillis();
 
-        List<Long> l = map.get(ip);
+        List<Long> l = throttleMap.get(ip);
         if (l != null && l.size() > requestCountLimit - 1) {
             l = l.stream()
                     .filter(e -> cur - e < timeLimit)
@@ -47,19 +47,19 @@ public class ThrottlingServiceImpl implements ThrottlingService {
             } else {
                 l.add(cur);
             }
-            map.put(ip, l);
-            map1.put(ip, cur);
+            throttleMap.put(ip, l);
+            expiryMap.put(ip, cur);
         } finally {
             lock.writeLock().unlock();
         }
     }
 
     @Scheduled(fixedDelay = 30000)
-    public void cleanMap() {
-        map1.forEach((k, v) -> {
+    public void removeExpired() {
+        expiryMap.forEach((k, v) -> {
             if (System.currentTimeMillis() > v + timeLimit) {
-                map.remove(k);
-                map1.remove(k);
+                throttleMap.remove(k);
+                expiryMap.remove(k);
             }
         });
     }
